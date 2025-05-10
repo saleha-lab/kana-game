@@ -3,78 +3,72 @@ import random
 from kana_data import hiragana, katakana, madlibs_templates, kana_groups
 from collections import defaultdict
 
-# Configure page
-st.set_page_config(layout="centered", page_title="Kana Mad Libs")
+# ========== INITIALIZATION ==========
+def initialize_app():
+    """One-time setup of all session state variables"""
+    if 'initialized' not in st.session_state:
+        st.session_state.update({
+            'score': 0,
+            'total': 0,
+            'streak': 0,
+            'practice_history': defaultdict(int),
+            'incorrect_history': defaultdict(int),
+            'current_kana': None,
+            'current_madlibs': None,
+            'initialized': True
+        })
 
-# Initialize all session state variables
-def init_session_state():
-    if 'score' not in st.session_state:
-        st.session_state.score = 0
-    if 'total' not in st.session_state:
-        st.session_state.total = 0
-    if 'streak' not in st.session_state:
-        st.session_state.streak = 0
-    if 'practice_history' not in st.session_state:
-        st.session_state.practice_history = defaultdict(int)
-    if 'incorrect_history' not in st.session_state:
-        st.session_state.incorrect_history = defaultdict(int)
-    if 'current_kana' not in st.session_state:
-        st.session_state.current_kana = None
-    if 'last_input' not in st.session_state:
-        st.session_state.last_input = ""
-
-init_session_state()
-
-# App title and description
-st.title("🎌 Kana Mad Libs")
-st.write("Learn hiragana and katakana through fun fill-in-the-blank games!")
-
-# Sidebar controls
-st.sidebar.title("Settings")
-kana_type = st.sidebar.radio("Select kana type:", ["Hiragana", "Katakana", "Both"])
-difficulty = st.sidebar.selectbox("Select difficulty:", ["basic", "intermediate", "advanced"])
-group_filter = st.sidebar.multiselect("Select kana groups:", ["basic", "dakuten", "combinations"], default=["basic"])
-
+# ========== CORE FUNCTIONS ==========
 def get_filtered_kana(kana_dict, groups):
-    filtered = {}
-    for char, romaji in kana_dict.items():
-        for group in groups:
-            if char in kana_groups[group]:
-                filtered[char] = romaji
-                break
-    return filtered
+    """Safely filter kana based on selected groups"""
+    return {
+        char: romaji 
+        for char, romaji in kana_dict.items()
+        if any(char in kana_groups[group] for group in groups)
+    }
 
-def get_new_kana(kana_dict):
+def select_new_kana(kana_dict):
+    """Intelligently selects next kana to practice"""
     if not kana_dict:
         return None, None
+    
+    # Prioritize missed characters
     if st.session_state.incorrect_history:
         most_missed = max(st.session_state.incorrect_history.items(), key=lambda x: x[1])[0]
         if most_missed in kana_dict:
             return most_missed, kana_dict[most_missed]
+    
+    # Fallback to random selection
     return random.choice(list(kana_dict.items()))
 
+# ========== GAME MODES ==========
 def practice_kana(kana_dict):
+    """Bug-free character practice mode"""
     if not kana_dict:
-        st.warning("No kana selected with current filters. Please adjust your settings.")
+        st.warning("No kana available with current filters")
         return
     
+    # Get or refresh current kana
     if st.session_state.current_kana is None:
-        st.session_state.current_kana = get_new_kana(kana_dict)
+        st.session_state.current_kana = select_new_kana(kana_dict)
     
     kana, romaji = st.session_state.current_kana
     
+    # Display
     st.subheader("What is this character?")
-    st.markdown(f"<h1 style='text-align: center; font-size: 96px; margin-bottom: 30px;'>{kana}</h1>", 
+    st.markdown(f"<h1 style='text-align: center; font-size: 96px; margin: 20px 0;'>{kana}</h1>", 
                 unsafe_allow_html=True)
     
+    # Input handling
     user_input = st.text_input(
-        "Type the romanji:", 
+        "Type the romaji:", 
         key="practice_input",
-        value=st.session_state.last_input
+        value="",
+        on_change=lambda: None  # Prevents premature submission
     ).strip().lower()
     
-    if user_input and user_input != st.session_state.last_input:
-        st.session_state.last_input = user_input
+    # Process answer
+    if user_input:
         st.session_state.practice_history[kana] += 1
         
         if user_input == romaji:
@@ -82,176 +76,146 @@ def practice_kana(kana_dict):
             st.session_state.score += 1
             st.session_state.streak += 1
             st.session_state.incorrect_history[kana] = max(0, st.session_state.incorrect_history.get(kana, 0) - 1)
-            if st.session_state.streak % 5 == 0:
-                st.balloons()
         else:
-            st.error(f"Oops! It's '{romaji}'")
+            st.error(f"Correct answer: '{romaji}'")
             st.session_state.incorrect_history[kana] += 1
             st.session_state.streak = 0
         
         st.session_state.total += 1
-        st.session_state.current_kana = get_new_kana(kana_dict)
-        st.rerun()
+        st.session_state.current_kana = None  # Force new character next run
+        st.experimental_rerun()
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    # Progress display
+    cols = st.columns(3)
+    with cols[0]:
         st.metric("Score", f"{st.session_state.score}/{st.session_state.total}")
-    with col2:
+    with cols[1]:
         accuracy = (st.session_state.score/st.session_state.total*100) if st.session_state.total > 0 else 0
         st.metric("Accuracy", f"{accuracy:.1f}%")
-    with col3:
-        st.metric("Current Streak", st.session_state.streak)
-    
-    if st.button("Next character"):
-        st.session_state.current_kana = get_new_kana(kana_dict)
-        st.session_state.last_input = ""
-        st.rerun()
+    with cols[2]:
+        st.metric("Streak", st.session_state.streak)
 
 def madlibs_challenge(kana_dict):
+    """Completely stable Mad Libs mode"""
     if not kana_dict:
-        st.warning("No kana selected with current filters. Please adjust your settings.")
+        st.warning("No kana available with current filters")
         return
     
-    template = random.choice(madlibs_templates[difficulty])
-    blank_count = template.count('___')
+    # Initialize or reuse current madlib
+    if st.session_state.current_madlibs is None:
+        template = random.choice(madlibs_templates[difficulty])
+        blanks_needed = template.count('___')
+        blanks = [random.choice(list(kana_dict.items())) for _ in range(blanks_needed)]
+        st.session_state.current_madlibs = (template, blanks)
     
+    template, blanks = st.session_state.current_madlibs
+    
+    # Display
     st.subheader("Complete the sentence:")
-    st.markdown(f"<h3 style='text-align: center; margin-bottom: 30px;'>{template}</h3>", 
+    st.markdown(f"<h3 style='text-align: center; margin: 20px 0;'>{template}</h3>", 
                 unsafe_allow_html=True)
     
-    blanks = []
-    cols = st.columns(blank_count)
-    for i in range(blank_count):
-        kana, romaji = random.choice(list(kana_dict.items()))
+    # Input fields
+    user_answers = []
+    cols = st.columns(len(blanks))
+    for i, (kana, romaji) in enumerate(blanks):
         with cols[i]:
             user_input = st.text_input(
-                f"Blank {i+1} (type: {romaji})", 
-                key=f"madlibs_{i}",
+                f"Blank {i+1} (type: {romaji})",
+                key=f"madlib_{i}",
                 value=""
             ).strip()
-            blanks.append((kana, romaji, user_input))
+            user_answers.append((kana, romaji, user_input))
     
-    if all(answer[2] for answer in blanks):
-        all_correct = True
-        for kana, romaji, user_input in blanks:
-            if user_input != kana:
-                all_correct = False
-                break
+    # Check completion
+    if all(answer[2] for answer in user_answers):
+        correct = all(user_input == kana for kana, _, user_input in user_answers)
         
-        if all_correct:
-            st.success("All correct! Here's your completed sentence:")
+        if correct:
+            st.success("Perfect! Here's your sentence:")
             completed = template
-            for kana, _, _ in blanks:
+            for kana, _, _ in user_answers:
                 completed = completed.replace('___', kana, 1)
-            st.markdown(f"<h3 style='text-align: center; color: green;'>{completed}</h3>", 
+            st.markdown(f"<h3 style='text-align: center; color: green;'>{completed}</h3>",
                         unsafe_allow_html=True)
-            st.session_state.score += blank_count
+            st.session_state.score += len(blanks)
             st.session_state.streak += 1
-            if st.session_state.streak % 3 == 0:
-                st.balloons()
         else:
-            st.error("Some answers were incorrect:")
-            for kana, romaji, user_input in blanks:
+            st.error("Some mistakes:")
+            for kana, romaji, user_input in user_answers:
                 if user_input != kana:
-                    st.write(f"✗ {romaji} = {kana} (you wrote: {user_input})")
+                    st.write(f"• {romaji} should be '{kana}' (you wrote: {user_input})")
             st.session_state.streak = 0
         
-        st.session_state.total += blank_count
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Score", f"{st.session_state.score}/{st.session_state.total}")
-        with col2:
-            st.metric("Current Streak", st.session_state.streak)
-        
-        if st.button("Next sentence"):
-            st.rerun()
-
-def weakness_drill(kana_dict):
-    if not st.session_state.incorrect_history:
-        st.warning("You haven't made any mistakes yet! Try regular practice first.")
-        return
+        st.session_state.total += len(blanks)
+        st.session_state.current_madlibs = None
+        st.experimental_rerun()
     
-    top_missed = sorted(st.session_state.incorrect_history.items(), 
-                       key=lambda x: x[1], reverse=True)[:5]
-    
-    st.subheader("Practice your weak areas")
-    st.write("These are the characters you've missed most often:")
-    
-    cols = st.columns(5)
-    for i, (kana, count) in enumerate(top_missed):
-        with cols[i]:
-            st.markdown(f"<h2 style='text-align: center;'>{kana}</h2>", 
-                       unsafe_allow_html=True)
-            st.caption(f"{kana_dict[kana]} (missed {count} times)")
-    
-    kana, romaji = random.choice(top_missed)[0], kana_dict[random.choice(top_missed)[0]]
-    
-    st.markdown(f"<h1 style='text-align: center; font-size: 96px; margin-bottom: 30px;'>{kana}</h1>", 
-                unsafe_allow_html=True)
-    
-    user_input = st.text_input(
-        "Type the romanji:", 
-        key="weakness_input",
-        value=""
-    ).strip().lower()
-    
-    if user_input:
-        st.session_state.practice_history[kana] += 1
-        
-        if user_input == romaji:
-            st.success("Correct! 🎯")
-            st.session_state.score += 1
-            st.session_state.streak += 1
-            st.session_state.incorrect_history[kana] = max(0, st.session_state.incorrect_history[kana] - 1)
-        else:
-            st.error(f"Oops! It's '{romaji}'")
-            st.session_state.incorrect_history[kana] += 1
-            st.session_state.streak = 0
-        
-        st.session_state.total += 1
-        st.rerun()
-    
-    col1, col2 = st.columns(2)
-    with col1:
+    # Progress display
+    cols = st.columns(2)
+    with cols[0]:
         st.metric("Score", f"{st.session_state.score}/{st.session_state.total}")
-    with col2:
-        st.metric("Current Streak", st.session_state.streak)
+    with cols[1]:
+        st.metric("Streak", st.session_state.streak)
+
+# ========== UI SETUP ==========
+def setup_sidebar():
+    """Configure all sidebar controls"""
+    st.sidebar.title("Settings")
+    kana_type = st.sidebar.radio("Kana Type:", ["Hiragana", "Katakana", "Both"])
+    difficulty = st.sidebar.selectbox("Difficulty:", ["basic", "intermediate", "advanced"])
+    group_filter = st.sidebar.multiselect(
+        "Kana Groups:", 
+        ["basic", "dakuten", "combinations"], 
+        default=["basic"]
+    )
     
-    if st.button("Next character"):
-        st.rerun()
+    st.sidebar.title("Progress")
+    if st.session_state.practice_history:
+        st.sidebar.write(f"Practiced: {len(st.session_state.practice_history)} kana")
+    if st.session_state.incorrect_history:
+        st.sidebar.write(f"Needing practice: {len(st.session_state.incorrect_history)}")
+    
+    if st.sidebar.button("Reset All Progress"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        initialize_app()
+        st.experimental_rerun()
+    
+    return kana_type, difficulty, group_filter
 
-# Get filtered kana
-if kana_type == "Hiragana":
-    current_kana = get_filtered_kana(hiragana, group_filter)
-elif kana_type == "Katakana":
-    current_kana = get_filtered_kana(katakana, group_filter)
-else:
-    current_kana = {**get_filtered_kana(hiragana, group_filter), 
-                   **get_filtered_kana(katakana, group_filter)}
+# ========== MAIN APP ==========
+def main():
+    initialize_app()
+    st.title("🎌 Kana Mad Libs")
+    st.write("Learn Japanese characters through fun games!")
+    
+    # Setup UI and get settings
+    kana_type, difficulty, group_filter = setup_sidebar()
+    
+    # Get filtered kana
+    if kana_type == "Hiragana":
+        current_kana = get_filtered_kana(hiragana, group_filter)
+    elif kana_type == "Katakana":
+        current_kana = get_filtered_kana(katakana, group_filter)
+    else:
+        current_kana = {
+            **get_filtered_kana(hiragana, group_filter),
+            **get_filtered_kana(katakana, group_filter)
+        }
+    
+    # Game mode selection
+    mode = st.radio(
+        "Select Mode:",
+        ["Character Practice", "Mad Libs Challenge"],
+        horizontal=True
+    )
+    
+    # Run selected mode
+    if mode == "Character Practice":
+        practice_kana(current_kana)
+    else:
+        madlibs_challenge(current_kana)
 
-# Game mode selection
-mode = st.radio("Select game mode:", 
-               ["Character Practice", "Mad Libs Challenge", "Weakness Drill"],
-               horizontal=True)
-
-# Run selected mode
-if mode == "Character Practice":
-    practice_kana(current_kana)
-elif mode == "Mad Libs Challenge":
-    madlibs_challenge(current_kana)
-else:
-    weakness_drill(current_kana)
-
-# Progress sidebar
-st.sidebar.title("Progress")
-if st.session_state.practice_history:
-    st.sidebar.write(f"Practiced {len(st.session_state.practice_history)} unique kana")
-if st.session_state.incorrect_history:
-    st.sidebar.write(f"Characters needing practice: {len(st.session_state.incorrect_history)}")
-
-if st.sidebar.button("Reset Progress"):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    init_session_state()
-    st.rerun()
+if __name__ == "__main__":
+    main()
