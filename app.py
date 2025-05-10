@@ -94,11 +94,12 @@ def practice_kana(kana_dict):
         st.metric("Current Streak", st.session_state.streak)
 
     if st.button("Next character"):
-        st.session_state.current_kana = random.choice(list(kana_dict.items()))
-        st.session_state.practice_input = ""
-        if hasattr(st.session_state, 'correct_answer'):
-            del st.session_state.correct_answer
-        st.rerun()
+    st.session_state.current_kana = random.choice(list(kana_dict.items()))
+    if hasattr(st.session_state, 'practice_input'):
+        del st.session_state.practice_input  
+    if hasattr(st.session_state, 'correct_answer'):
+        del st.session_state.correct_answer
+    st.rerun()
 
 def madlibs_challenge(kana_dict):
     """Mad Libs style sentence completion"""
