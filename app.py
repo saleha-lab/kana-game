@@ -3,6 +3,9 @@ import random
 from kana_data import hiragana, katakana, madlibs_templates, kana_groups
 from collections import defaultdict
 
+# Configure page
+st.set_page_config(layout="centered", page_title="Kana Mad Libs")
+
 # App title and description
 st.title("🎌 Kana Mad Libs")
 st.write("Learn hiragana and katakana through fun fill-in-the-blank games!")
@@ -18,6 +21,8 @@ if 'incorrect_history' not in st.session_state:
     st.session_state.incorrect_history = defaultdict(int)
 if 'streak' not in st.session_state:
     st.session_state.streak = 0
+if 'current_kana' not in st.session_state:
+    st.session_state.current_kana = None
 
 # Sidebar controls
 st.sidebar.title("Settings")
@@ -41,51 +46,68 @@ def practice_kana(kana_dict):
         st.warning("No kana selected with current filters. Please adjust your settings.")
         return
     
-    # Select kana weighted by practice frequency
-    if st.session_state.practice_history:
-        min_practiced = min(st.session_state.practice_history.values())
-        candidates = [k for k in kana_dict.keys() 
-                     if st.session_state.practice_history.get(k, 0) == min_practiced]
-        kana = random.choice(candidates) if candidates else random.choice(list(kana_dict.keys()))
-    else:
-        kana = random.choice(list(kana_dict.keys()))
+    # Initialize or get current kana
+    if st.session_state.current_kana is None:
+        st.session_state.current_kana = random.choice(list(kana_dict.items()))
     
-    romaji = kana_dict[kana]
+    kana, romaji = st.session_state.current_kana
     
     st.subheader("What is this character?")
-    st.markdown(f"<h1 style='text-align: center; font-size: 96px;'>{kana}</h1>", 
+    st.markdown(f"<h1 style='text-align: center; font-size: 96px; margin-bottom: 30px;'>{kana}</h1>", 
                 unsafe_allow_html=True)
     
-    user_input = st.text_input("Type the romanji:", key="practice_input").strip().lower()
+    # Handle input submission
+    def handle_input():
+        user_input = st.session_state.practice_input.strip().lower()
+        if user_input:
+            st.session_state.practice_history[kana] = st.session_state.practice_history.get(kana, 0) + 1
+            
+            if user_input == romaji:
+                st.session_state.score += 1
+                st.session_state.streak += 1
+                st.session_state.correct_answer = True
+            else:
+                st.session_state.incorrect_history[kana] = st.session_state.incorrect_history.get(kana, 0) + 1
+                st.session_state.streak = 0
+                st.session_state.correct_answer = False
+            
+            st.session_state.total += 1
     
-    if user_input:
-        st.session_state.practice_history[kana] = st.session_state.practice_history.get(kana, 0) + 1
-        
-        if user_input == romaji:
+    # Text input with on_change handler
+    user_input = st.text_input(
+        "Type the romanji:", 
+        key="practice_input",
+        on_change=handle_input,
+        value="",
+        placeholder="Type here and press Enter"
+    )
+    
+    # Show feedback
+    if hasattr(st.session_state, 'correct_answer'):
+        if st.session_state.correct_answer:
             st.success("Correct! 🎉")
-            st.session_state.score += 1
-            st.session_state.streak += 1
             if st.session_state.streak % 5 == 0:
                 st.balloons()
         else:
             st.error(f"Oops! It's '{romaji}'")
-            st.session_state.incorrect_history[kana] = st.session_state.incorrect_history.get(kana, 0) + 1
-            st.session_state.streak = 0
-            
-        st.session_state.total += 1
-        
-        # Show progress
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Score", f"{st.session_state.score}/{st.session_state.total}")
-        with col2:
-            accuracy = (st.session_state.score/st.session_state.total*100) if st.session_state.total > 0 else 0
-            st.metric("Accuracy", f"{accuracy:.1f}%")
-        with col3:
-            st.metric("Current Streak", st.session_state.streak)
-        
-        if st.button("Next character"):
-            st.rerun()
+    
+    # Show progress
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Score", f"{st.session_state.score}/{st.session_state.total}")
+    with col2:
+        accuracy = (st.session_state.score/st.session_state.total*100) if st.session_state.total > 0 else 0
+        st.metric("Accuracy", f"{accuracy:.1f}%")
+    with col3:
+        st.metric("Current Streak", st.session_state.streak)
+    
+    # Next character button
+    if st.button("Next character") or hasattr(st.session_state, 'correct_answer'):
+        st.session_state.current_kana = random.choice(list(kana_dict.items()))
+        st.session_state.practice_input = ""
+        if hasattr(st.session_state, 'correct_answer'):
+            del st.session_state.correct_answer
+        st.rerun()
 
 def madlibs_challenge(kana_dict):
     """Mad Libs style sentence completion"""
@@ -97,7 +119,7 @@ def madlibs_challenge(kana_dict):
     blank_count = template.count('___')
     
     st.subheader("Complete the sentence:")
-    st.markdown(f"<h3 style='text-align: center;'>{template}</h3>", 
+    st.markdown(f"<h3 style='text-align: center; margin-bottom: 30px;'>{template}</h3>", 
                 unsafe_allow_html=True)
     
     blanks = []
@@ -109,8 +131,11 @@ def madlibs_challenge(kana_dict):
     cols = st.columns(blank_count)
     for i, (kana, romaji) in enumerate(blanks):
         with cols[i]:
-            user_input = st.text_input(f"Blank {i+1} (type: {romaji})", 
-                                      key=f"madlibs_{i}").strip()
+            user_input = st.text_input(
+                f"Blank {i+1} (type: {romaji})", 
+                key=f"madlibs_{i}",
+                placeholder=romaji
+            ).strip()
             user_answers.append((kana, romaji, user_input))
     
     if all(answer[2] for answer in user_answers):
@@ -172,23 +197,35 @@ def weakness_drill(kana_dict):
     kana = random.choice(missed_kana)
     romaji = kana_dict[kana]
     
-    st.markdown(f"<h1 style='text-align: center; font-size: 96px;'>{kana}</h1>", 
+    st.markdown(f"<h1 style='text-align: center; font-size: 96px; margin-bottom: 30px;'>{kana}</h1>", 
                 unsafe_allow_html=True)
     
-    user_input = st.text_input("Type the romanji:", key="weakness_input").strip().lower()
+    def handle_weakness_input():
+        user_input = st.session_state.weakness_input.strip().lower()
+        if user_input:
+            if user_input == romaji:
+                st.session_state.score += 1
+                st.session_state.streak += 1
+                st.session_state.incorrect_history[kana] = max(0, st.session_state.incorrect_history[kana] - 1)
+                st.session_state.correct_weakness = True
+            else:
+                st.session_state.incorrect_history[kana] += 1
+                st.session_state.streak = 0
+                st.session_state.correct_weakness = False
+            st.session_state.total += 1
     
-    if user_input:
-        if user_input == romaji:
+    user_input = st.text_input(
+        "Type the romanji:", 
+        key="weakness_input",
+        on_change=handle_weakness_input,
+        value=""
+    )
+    
+    if hasattr(st.session_state, 'correct_weakness'):
+        if st.session_state.correct_weakness:
             st.success("Correct! 🎯")
-            st.session_state.score += 1
-            st.session_state.streak += 1
-            st.session_state.incorrect_history[kana] = max(0, st.session_state.incorrect_history[kana] - 1)
         else:
             st.error(f"Oops! It's '{romaji}'")
-            st.session_state.incorrect_history[kana] += 1
-            st.session_state.streak = 0
-            
-        st.session_state.total += 1
         
         col1, col2 = st.columns(2)
         with col1:
@@ -196,7 +233,9 @@ def weakness_drill(kana_dict):
         with col2:
             st.metric("Current Streak", st.session_state.streak)
         
-        if st.button("Next character"):
+        if st.button("Next character") or True:
+            st.session_state.weakness_input = ""
+            del st.session_state.correct_weakness
             st.rerun()
 
 # Get filtered kana based on selections
@@ -210,7 +249,8 @@ else:
 
 # Game mode selection
 mode = st.radio("Select game mode:", 
-               ["Character Practice", "Mad Libs Challenge", "Weakness Drill"])
+               ["Character Practice", "Mad Libs Challenge", "Weakness Drill"],
+               horizontal=True)
 
 # Run selected mode
 if mode == "Character Practice":
@@ -233,5 +273,6 @@ if st.sidebar.button("Reset Progress"):
     st.session_state.practice_history = defaultdict(int)
     st.session_state.incorrect_history = defaultdict(int)
     st.session_state.streak = 0
+    st.session_state.current_kana = None
     st.sidebar.success("Progress reset!")
     st.rerun()
