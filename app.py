@@ -253,3 +253,4 @@ if st.sidebar.button("Reset Progress"):
     st.session_state.incorrect_history = defaultdict(int)
     st.session_state.streak = 0
     st.sidebar.success("Progress reset!")
+    st.rerun()
