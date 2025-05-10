@@ -95,6 +95,7 @@ def practice_kana(kana_dict):
 
     if st.button("Next character"):
         st.session_state.current_kana = random.choice(list(kana_dict.items()))
+        if hasattr(st.session_state, 'practice_input'):
             del st.session_state.practice_input
         if hasattr(st.session_state, 'correct_answer'):
             del st.session_state.correct_answer
